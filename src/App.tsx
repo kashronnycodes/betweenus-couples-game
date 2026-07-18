@@ -1,17 +1,13 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, Copy, Menu, Wifi, WifiOff } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CinematicBackground } from "./components/background/CinematicBackground";
 import { Button } from "./components/common/Button";
 import { OptionCard } from "./components/game/OptionCard";
 import { APP_CAPTION, APP_NAME } from "./constants/app";
 import { questions } from "./data/questions";
-import {
-  buildReveal,
-  generateRoomCode,
-  normalizeRoomCode,
-  selectQuestions,
-} from "./lib/gameLogic";
+import { normalizeRoomCode, selectQuestions } from "./lib/gameLogic";
+import { useRealtimeGame } from "./hooks/useRealtimeGame";
 import type {
   Choice,
   GameScreenState,
@@ -37,22 +33,32 @@ const motionProps = {
 export default function App() {
   const [screen, setScreen] = useState<GameScreenState>({ kind: "landing" });
   const [name, setName] = useState("");
-  const [partner, setPartner] = useState("");
-  const [code, setCode] = useState(generateRoomCode());
+  const [code, setCode] = useState("");
   const [count, setCount] = useState(10);
   const [category, setCategory] = useState<QuestionCategory>("Mixed");
   const [round, setRound] = useState(0);
   const [choice, setChoice] = useState<Choice>();
   const [guess, setGuess] = useState<Choice>();
-  const [score, setScore] = useState([0, 0]);
   const [reveals, setReveals] = useState<RevealResult[]>([]);
-  const connected = true;
+  const [busy, setBusy] = useState(false);
   const [menu, setMenu] = useState(false);
-  const game = useMemo(
-    () => selectQuestions(questions, category, count),
-    [category, count],
-  );
-  const q = game[round];
+  const realtime = useRealtimeGame();
+  const room = realtime.state?.room;
+  const players = realtime.state?.players ?? [];
+  const isHost = Boolean(room && realtime.userId === room.host_user_id);
+  const partner = players.find((player) => player.user_id !== realtime.userId)?.display_name ?? "";
+  const score = players.map((player) => player.score);
+  const game = useMemo(() => {
+    if (room?.question_ids.length) {
+      return room.question_ids
+        .map((id) => questions.find((question) => question.id === id))
+        .filter((question): question is (typeof questions)[number] => Boolean(question));
+    }
+    return selectQuestions(questions, category, count);
+  }, [category, count, room?.question_ids]);
+  const activeRound = room?.current_round ?? round;
+  const q = game[activeRound];
+  const connected = realtime.connection === "Connected";
   const inRoom = !["landing", "create", "join"].includes(screen.kind);
   const go = (kind: GameScreenState["kind"]) =>
     setScreen(
@@ -60,41 +66,38 @@ export default function App() {
         ? { kind, message: "Something went wrong." }
         : ({ kind } as GameScreenState),
     );
-  function reveal() {
-    if (!choice || !guess) return;
-    const theirChoice: Choice = Math.random() > 0.5 ? "A" : "B",
-      theirGuess: Choice =
-        Math.random() > 0.45 ? choice : choice === "A" ? "B" : "A";
-    const r = buildReveal(
-      round,
-      {
-        playerId: "me",
-        roundIndex: round,
-        personalChoice: choice,
-        partnerPrediction: guess,
-        locked: true,
-      },
-      {
-        playerId: "partner",
-        roundIndex: round,
-        personalChoice: theirChoice,
-        partnerPrediction: theirGuess,
-        locked: true,
-      },
-    )!;
-    setReveals((v) => [...v, r]);
-    setScore((s) => [s[0] + +r.correct.me, s[1] + +r.correct.partner]);
-    go("reveal");
-  }
-  function next() {
-    if (round === count - 1) {
-      go("results");
-      return;
+  useEffect(() => {
+    if (!room) return;
+    setCode(room.code);
+    setCount(room.total_rounds);
+    setCategory(room.category);
+    setRound(room.current_round);
+    if (room.status === "lobby") go("lobby");
+    if (room.status === "playing" && ["lobby", "reveal", "results"].includes(screen.kind)) {
+      setChoice(undefined);
+      setGuess(undefined);
+      go("personal");
     }
-    setRound((r) => r + 1);
-    setChoice(undefined);
-    setGuess(undefined);
-    go("personal");
+    if (room.status === "reveal" && screen.kind !== "reveal") {
+      void realtime.getReveal().then((result) => {
+        if (!result) return;
+        setReveals((current) => [
+          ...current.filter((item) => item.roundIndex !== result.roundIndex),
+          result,
+        ]);
+        go("reveal");
+      });
+    }
+    if (room.status === "finished") go("results");
+  }, [room?.id, room?.status, room?.current_round]);
+
+  async function perform(action: () => Promise<unknown>) {
+    setBusy(true);
+    try {
+      await action();
+    } finally {
+      setBusy(false);
+    }
   }
   return (
     <div className="shell">
@@ -127,7 +130,10 @@ export default function App() {
               {menu && (
                 <button
                   className="absolute right-5 top-16 btn btn-secondary"
-                  onClick={() => go("landing")}
+                  onClick={() => {
+                    realtime.leave();
+                    go("landing");
+                  }}
                 >
                   Leave room
                 </button>
@@ -164,13 +170,20 @@ export default function App() {
                     category={category}
                     setCategory={setCategory}
                     back={() => go("landing")}
-                    submit={() => {
-                      if (name.trim()) {
-                        setPartner("");
-                        setCode(generateRoomCode());
-                        go("lobby");
-                      }
-                    }}
+                    error={realtime.error}
+                    busy={busy}
+                    submit={() =>
+                      perform(async () => {
+                        if (!name.trim()) return;
+                        const selected = selectQuestions(questions, category, count);
+                        await realtime.createRoom(
+                          name,
+                          category,
+                          count,
+                          selected.map((question) => question.id),
+                        );
+                      })
+                    }
                   />
                 )}{" "}
                 {screen.kind === "join" && (
@@ -180,12 +193,14 @@ export default function App() {
                     code={code}
                     setCode={setCode}
                     back={() => go("landing")}
-                    submit={() => {
-                      if (name.trim() && code.length === 6) {
-                        setPartner("Room host");
-                        go("lobby");
-                      }
-                    }}
+                    error={realtime.error}
+                    busy={busy}
+                    submit={() =>
+                      perform(async () => {
+                        if (name.trim() && code.length === 6)
+                          await realtime.joinRoom(name, code);
+                      })
+                    }
                   />
                 )}{" "}
                 {screen.kind === "lobby" && (
@@ -195,53 +210,74 @@ export default function App() {
                     code={code}
                     count={count}
                     category={category}
-                    start={() => go("personal")}
+                    isHost={isHost}
+                    busy={busy}
+                    error={realtime.error}
+                    start={() => perform(realtime.startGame)}
                   />
                 )}{" "}
                 {(screen.kind === "personal" ||
                   screen.kind === "prediction") && (
                   <Question
                     q={q}
-                    round={round}
+                    round={activeRound}
                     count={count}
                     mode={screen.kind}
                     selected={screen.kind === "personal" ? choice : guess}
                     setSelected={
                       screen.kind === "personal" ? setChoice : setGuess
                     }
-                    submit={() =>
-                      screen.kind === "personal"
-                        ? go("prediction")
-                        : go("waiting")
-                    }
+                    busy={busy}
+                    submit={() => {
+                      if (screen.kind === "personal") {
+                        go("prediction");
+                        return;
+                      }
+                      if (!choice || !guess) return;
+                      void perform(async () => {
+                        await realtime.submitAnswer(activeRound, choice, guess);
+                        go("waiting");
+                      });
+                    }}
                   />
                 )}{" "}
                 {screen.kind === "waiting" && (
-                  <Waiting round={round} partner={partner} reveal={reveal} />
+                  <Waiting round={activeRound} partner={partner} />
                 )}{" "}
                 {screen.kind === "reveal" && (
                   <Reveal
                     result={reveals.at(-1)!}
                     q={q}
-                    names={[name || "You", partner]}
+                    names={[
+                      players[0]?.display_name ?? (name || "You"),
+                      players[1]?.display_name ?? partner,
+                    ]}
                     score={score}
-                    next={next}
-                    final={round === count - 1}
+                    next={() => perform(realtime.advanceRound)}
+                    final={activeRound === count - 1}
+                    isHost={isHost}
+                    busy={busy}
                   />
                 )}{" "}
                 {screen.kind === "results" && (
                   <Results
-                    names={[name || "You", partner]}
+                    names={[
+                      players[0]?.display_name ?? (name || "You"),
+                      players[1]?.display_name ?? partner,
+                    ]}
                     score={score}
                     total={count}
                     reveals={reveals}
                     again={() => {
                       setRound(0);
-                      setScore([0, 0]);
                       setReveals([]);
-                      go("lobby");
+                      realtime.leave();
+                      go("create");
                     }}
-                    leave={() => go("landing")}
+                    leave={() => {
+                      realtime.leave();
+                      go("landing");
+                    }}
                   />
                 )}{" "}
                 {screen.kind === "error" && (
@@ -294,6 +330,8 @@ function Setup(p: {
   setCategory: (c: QuestionCategory) => void;
   back: () => void;
   submit: () => void;
+  error: string;
+  busy: boolean;
 }) {
   return (
     <form
@@ -353,8 +391,9 @@ function Setup(p: {
         </select>
       </label>
       <Button className="w-full mt-8" type="submit">
-        Create Room
+        {p.busy ? "Creating Room…" : "Create Room"}
       </Button>
+      {p.error && <p className="mt-3 text-sm text-[var(--danger)]" role="alert">{p.error}</p>}
     </form>
   );
 }
@@ -365,6 +404,8 @@ function Join(p: {
   setCode: (v: string) => void;
   back: () => void;
   submit: () => void;
+  error: string;
+  busy: boolean;
 }) {
   return (
     <form
@@ -407,8 +448,9 @@ function Join(p: {
         />
       </label>
       <Button className="w-full mt-8" type="submit">
-        Join Game
+        {p.busy ? "Joining…" : "Join Game"}
       </Button>
+      {p.error && <p className="mt-3 text-sm text-[var(--danger)]" role="alert">{p.error}</p>}
     </form>
   );
 }
@@ -419,6 +461,9 @@ function Lobby({
   count,
   category,
   start,
+  isHost,
+  busy,
+  error,
 }: {
   name: string;
   partner: string;
@@ -426,6 +471,9 @@ function Lobby({
   count: number;
   category: string;
   start: () => void;
+  isHost: boolean;
+  busy: boolean;
+  error: string;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -483,13 +531,14 @@ function Lobby({
         <span>{count} rounds</span>
         <span>Connected</span>
       </div>
-      <Button
-        className="w-full sm:w-auto mt-8"
-        onClick={start}
-        disabled={!partner}
-      >
-        {partner ? "Start Game" : "Waiting for partner"}
-      </Button>
+      {isHost ? (
+        <Button className="w-full sm:w-auto mt-8" onClick={start} disabled={!partner || busy}>
+          {busy ? "Starting…" : partner ? "Start Game" : "Waiting for partner"}
+        </Button>
+      ) : (
+        <p className="mt-8 text-sm text-[var(--foreground-soft)]">Waiting for the room creator to start.</p>
+      )}
+      {error && <p className="mt-3 text-sm text-[var(--danger)]" role="alert">{error}</p>}
     </div>
   );
 }
@@ -501,6 +550,7 @@ function Question({
   selected,
   setSelected,
   submit,
+  busy,
 }: {
   q: (typeof questions)[number];
   round: number;
@@ -509,6 +559,7 @@ function Question({
   selected?: Choice;
   setSelected: (c: Choice) => void;
   submit: () => void;
+  busy: boolean;
 }) {
   return (
     <div>
@@ -551,7 +602,7 @@ function Question({
         />
       </div>
       <div className="flex justify-end mt-6">
-        <Button disabled={!selected} onClick={submit}>
+        <Button disabled={!selected || busy} onClick={submit}>
           {mode === "personal" ? "Lock In My Answer" : "Lock In My Guess"}
         </Button>
       </div>
@@ -561,11 +612,9 @@ function Question({
 function Waiting({
   round,
   partner,
-  reveal,
 }: {
   round: number;
   partner: string;
-  reveal: () => void;
 }) {
   return (
     <div className="max-w-xl mx-auto text-center py-8">
@@ -590,9 +639,6 @@ function Waiting({
       <p className="text-xs text-[var(--foreground-faint)] mt-6">
         Your partner is thinking.
       </p>
-      <Button variant="secondary" className="mt-6" onClick={reveal}>
-        Simulate partner submission
-      </Button>
     </div>
   );
 }
@@ -603,6 +649,8 @@ function Reveal({
   score,
   next,
   final,
+  isHost,
+  busy,
 }: {
   result: RevealResult;
   q: (typeof questions)[number];
@@ -610,6 +658,8 @@ function Reveal({
   score: number[];
   next: () => void;
   final: boolean;
+  isHost: boolean;
+  busy: boolean;
 }) {
   const hits = Object.values(result.correct).filter(Boolean).length;
   const title =
@@ -658,9 +708,15 @@ function Reveal({
       <p className="font-serif text-3xl mt-7 score-pop">
         Score {score[0]} — {score[1]}
       </p>
-      <Button className="mt-6" onClick={next}>
-        {final ? "See Our Results" : "Next Question"}
-      </Button>
+      {isHost ? (
+        <Button className="mt-6" onClick={next} disabled={busy}>
+          {busy ? "Continuing…" : final ? "See Our Results" : "Next Question"}
+        </Button>
+      ) : (
+        <p className="mt-6 text-sm text-[var(--foreground-soft)]">
+          Waiting for the room creator to continue.
+        </p>
+      )}
     </div>
   );
 }

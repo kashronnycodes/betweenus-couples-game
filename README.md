@@ -1,6 +1,6 @@
 # Between Us
 
-Between Us is a cinematic two-player relationship game. Each partner privately chooses an answer, predicts the other's choice, and sees the shared reveal only after both answers are locked. The interface also includes a clearly labeled local demo mode when Supabase is not configured.
+Between Us is a cinematic two-player relationship game. Each partner privately chooses an answer, predicts the other's choice, and sees the shared reveal only after both answers are locked. Supabase authentication and Realtime keep both devices in the same server-authoritative room.
 
 ## Install and run
 
@@ -30,9 +30,7 @@ No secret service-role key belongs in the client.
 
 The migration enables RLS, revokes direct access to private submissions, and exposes three authenticated RPCs: `submit_round_answer`, `get_round_reveal`, and `advance_game_round`. This prevents either partner’s answer from being returned until both submissions are locked. Room/player rows are Realtime-enabled; subscribe once per active room and remove the channel when leaving or unmounting.
 
-## Local Demo Mode
-
-Leave the Supabase variables empty. The entire journey remains playable with a simulated second partner. Development-only controls can simulate connection changes, and the waiting screen includes a partner-submission control. Demo mode is always labeled and is not real multiplayer.
+Supabase configuration is required for room creation and two-device play. The application displays a friendly connection error instead of creating a fake local room when configuration is missing.
 
 ## Test with two browsers
 
