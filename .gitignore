@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Production output
+dist/
+
+# Local environment variables (keep the documented example)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# TypeScript and test artifacts
+*.tsbuildinfo
+coverage/
+
+# Local editor and Codex metadata
+.vscode/
+.idea/
+.agents/
+.codex/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

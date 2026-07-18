@@ -1,0 +1,70 @@
+:root {
+  --background: #f4f1eb;
+  --background-deep: #ebe6dd;
+  --foreground: #11100f;
+  --foreground-soft: #6f6b65;
+  --foreground-faint: #9a958d;
+  --surface: rgba(255, 255, 255, 0.48);
+  --surface-strong: rgba(255, 255, 255, 0.68);
+  --surface-selected: rgba(255, 255, 255, 0.78);
+  --border: rgba(17, 16, 15, 0.1);
+  --border-light: rgba(255, 255, 255, 0.42);
+  --border-selected: rgba(17, 16, 15, 0.42);
+  --success: #647662;
+  --success-surface: rgba(100, 118, 98, 0.12);
+  --surprise: #a17d52;
+  --surprise-surface: rgba(161, 125, 82, 0.12);
+  --danger: #8b5f58;
+  --text-question: clamp(2.35rem, 5vw, 5.25rem);
+  --text-display: clamp(3rem, 7vw, 7rem);
+  --text-title: clamp(1.8rem, 3vw, 3rem);
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes reveal-answer {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes score-pop {
+  50% {
+    transform: scale(1.06);
+  }
+}
+@keyframes progress-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.fade-rise {
+  animation: fade-rise 0.7s var(--ease) both;
+}
+.fade-rise-delay {
+  animation: fade-rise 0.7s 0.14s var(--ease) both;
+}
+.fade-rise-delay-2 {
+  animation: fade-rise 0.7s 0.28s var(--ease) both;
+}
+.reveal-answer {
+  animation: reveal-answer 0.5s var(--ease) both;
+}
+.score-pop {
+  animation: score-pop 0.4s var(--ease);
+}
