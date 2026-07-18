@@ -46,7 +46,7 @@ export default function App() {
   const [guess, setGuess] = useState<Choice>();
   const [score, setScore] = useState([0, 0]);
   const [reveals, setReveals] = useState<RevealResult[]>([]);
-  const [connected, setConnected] = useState(true);
+  const connected = true;
   const [menu, setMenu] = useState(false);
   const game = useMemo(
     () => selectQuestions(questions, category, count),
@@ -257,27 +257,6 @@ export default function App() {
             </AnimatePresence>
           </section>
         </main>
-        {!import.meta.env.VITE_SUPABASE_URL && (
-          <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-20 rounded-full bg-[#171614] text-white text-[10px] tracking-widest uppercase px-3 py-2">
-            Local Demo Mode
-          </div>
-        )}
-        {import.meta.env.DEV && inRoom && (
-          <aside className="fixed left-3 bottom-3 z-30 hidden lg:flex gap-1 bg-white/70 p-1 rounded-full text-xs">
-            <button
-              className="btn btn-quiet"
-              onClick={() => setPartner("Mara")}
-            >
-              Partner joins
-            </button>
-            <button
-              className="btn btn-quiet"
-              onClick={() => setConnected(!connected)}
-            >
-              {connected ? "Disconnect" : "Reconnect"}
-            </button>
-          </aside>
-        )}
       </div>
     </div>
   );
