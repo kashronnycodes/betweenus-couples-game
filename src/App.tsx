@@ -542,7 +542,7 @@ function Lobby({
         </p>
         <Button
           variant="secondary"
-          className="mt-5"
+          className="mt-5 inline-flex items-center justify-center gap-2"
           onClick={copyCode}
           aria-label="Copy room code"
         >
