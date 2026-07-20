@@ -28,6 +28,8 @@ interface SyncedPlayer {
   player_number: 1 | 2;
   score: number;
   connected: boolean;
+  avatar_type: string;
+  avatar_path: string;
 }
 
 interface RoomState {
@@ -145,7 +147,7 @@ export function useRealtimeGame() {
   }, []);
 
   const createRoom = useCallback(
-    (displayName: string, category: QuestionCategory, totalRounds: number, questionIds: string[]) =>
+    (displayName: string, category: QuestionCategory, totalRounds: number, questionIds: string[], avatarType: string, avatarPath: string) =>
       run(async () => {
         if (!supabase) throw new Error("not_configured");
         const { data, error: rpcError } = await supabase.rpc("create_game_room", {
@@ -153,6 +155,8 @@ export function useRealtimeGame() {
           p_category: category,
           p_total_rounds: totalRounds,
           p_question_ids: questionIds,
+          p_avatar_type: avatarType,
+          p_avatar_path: avatarPath,
         });
         if (rpcError) throw rpcError;
         const next = data as RoomState;
@@ -165,12 +169,14 @@ export function useRealtimeGame() {
   );
 
   const joinRoom = useCallback(
-    (displayName: string, code: string) =>
+    (displayName: string, code: string, avatarType: string, avatarPath: string) =>
       run(async () => {
         if (!supabase) throw new Error("not_configured");
         const { data, error: rpcError } = await supabase.rpc("join_game_room", {
           p_display_name: displayName.trim(),
           p_code: code,
+          p_avatar_type: avatarType,
+          p_avatar_path: avatarPath,
         });
         if (rpcError) throw rpcError;
         const next = data as RoomState;

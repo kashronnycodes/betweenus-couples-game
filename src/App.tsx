@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { CinematicBackground } from "./components/background/CinematicBackground";
 import { Button } from "./components/common/Button";
 import { OptionCard } from "./components/game/OptionCard";
+import { CharacterSelectionScreen } from "./components/game/CharacterSelectionScreen";
+import { PlayerHUD } from "./components/game/PlayerHUD";
 import { APP_CAPTION, APP_NAME } from "./constants/app";
+import { AVATARS, type AvatarId } from "./constants/avatars";
 import { questions } from "./data/questions";
 import { normalizeRoomCode, selectQuestions } from "./lib/gameLogic";
 import { useRealtimeGame } from "./hooks/useRealtimeGame";
@@ -41,6 +44,8 @@ export default function App() {
   const [guess, setGuess] = useState<Choice>();
   const [reveals, setReveals] = useState<RevealResult[]>([]);
   const [busy, setBusy] = useState(false);
+  const [avatar, setAvatar] = useState<AvatarId>();
+  const [pendingRoomAction, setPendingRoomAction] = useState<"create" | "join" | null>(null);
   const [menu, setMenu] = useState(false);
   const realtime = useRealtimeGame();
   const room = realtime.state?.room;
@@ -59,7 +64,8 @@ export default function App() {
   const activeRound = room?.current_round ?? round;
   const q = game[activeRound];
   const connected = realtime.connection === "Connected";
-  const inRoom = !["landing", "create", "join"].includes(screen.kind);
+  const inRoom = !["landing", "create", "join", "avatar"].includes(screen.kind);
+  const showHUD = ["personal", "prediction", "waiting", "reveal", "results"].includes(screen.kind);
   const go = (kind: GameScreenState["kind"]) =>
     setScreen(
       kind === "error"
@@ -150,8 +156,14 @@ export default function App() {
             </nav>
           )}
         </header>
-        <main className="flex-1 grid place-items-center px-4 md:px-8 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2 md:pb-10">
-          <section className="glass rounded-[28px] md:rounded-[36px] w-full max-w-5xl px-5 py-7 md:px-10 md:py-10 lg:px-12 lg:py-11">
+        <main className="flex-1 flex flex-col justify-center px-4 md:px-8 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2 md:pb-10">
+          {showHUD && (
+            <div className="hud-stage">
+              <PlayerHUD player={players[0]} side="left" completedRounds={activeRound + (room?.status === "reveal" || room?.status === "finished" ? 1 : 0)} />
+              <PlayerHUD player={players[1]} side="right" completedRounds={activeRound + (room?.status === "reveal" || room?.status === "finished" ? 1 : 0)} />
+            </div>
+          )}
+          <section className="glass rounded-[28px] md:rounded-[36px] w-full max-w-5xl mx-auto px-5 py-7 md:px-10 md:py-10 lg:px-12 lg:py-11">
             <AnimatePresence mode="wait">
               <motion.div key={screen.kind} {...motionProps}>
                 {screen.kind === "landing" && (
@@ -172,18 +184,12 @@ export default function App() {
                     back={() => go("landing")}
                     error={realtime.error}
                     busy={busy}
-                    submit={() =>
-                      perform(async () => {
-                        if (!name.trim()) return;
-                        const selected = selectQuestions(questions, category, count);
-                        await realtime.createRoom(
-                          name,
-                          category,
-                          count,
-                          selected.map((question) => question.id),
-                        );
-                      })
-                    }
+                    submit={() => {
+                      if (!name.trim()) return;
+                      setPendingRoomAction("create");
+                      setAvatar(undefined);
+                      go("avatar");
+                    }}
                   />
                 )}{" "}
                 {screen.kind === "join" && (
@@ -195,12 +201,33 @@ export default function App() {
                     back={() => go("landing")}
                     error={realtime.error}
                     busy={busy}
-                    submit={() =>
-                      perform(async () => {
-                        if (name.trim() && code.length === 6)
-                          await realtime.joinRoom(name, code);
-                      })
-                    }
+                    submit={() => {
+                      if (!name.trim() || code.length !== 6) return;
+                      setPendingRoomAction("join");
+                      setAvatar(undefined);
+                      go("avatar");
+                    }}
+                  />
+                )}{" "}
+                {screen.kind === "avatar" && (
+                  <CharacterSelectionScreen
+                    selected={avatar}
+                    onSelect={setAvatar}
+                    onBack={() => go(pendingRoomAction === "join" ? "join" : "create")}
+                    busy={busy}
+                    error={realtime.error}
+                    onContinue={() => {
+                      if (!avatar || !pendingRoomAction) return;
+                      const selectedAvatar = AVATARS.find((item) => item.id === avatar)!;
+                      void perform(async () => {
+                        if (pendingRoomAction === "create") {
+                          const selected = selectQuestions(questions, category, count);
+                          await realtime.createRoom(name, category, count, selected.map((question) => question.id), selectedAvatar.id, selectedAvatar.path);
+                        } else {
+                          await realtime.joinRoom(name, code, selectedAvatar.id, selectedAvatar.path);
+                        }
+                      });
+                    }}
                   />
                 )}{" "}
                 {screen.kind === "lobby" && (

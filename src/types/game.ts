@@ -23,6 +23,8 @@ export interface Player {
   playerNumber: 1 | 2;
   score: number;
   connected: boolean;
+  avatarType: string;
+  avatarPath: string;
 }
 export interface RoundSubmission {
   playerId: string;
@@ -63,6 +65,7 @@ export type GameScreenState =
   | { kind: "landing" }
   | { kind: "create" }
   | { kind: "join" }
+  | { kind: "avatar" }
   | { kind: "lobby" }
   | { kind: "personal" }
   | { kind: "prediction" }

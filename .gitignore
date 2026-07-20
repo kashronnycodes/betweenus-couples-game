@@ -4,6 +4,9 @@ node_modules/
 # Production output
 dist/
 
+# Source artwork copied into public/avatars for the app
+characters/
+
 # Local environment variables (keep the documented example)
 .env
 .env.local
