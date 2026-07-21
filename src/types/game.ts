@@ -1,4 +1,5 @@
 export type Choice = "A" | "B";
+export type PlayerRoundStatus = "thinking" | "submitted";
 import type { QuestionCategoryId } from "../constants/questionCategories";
 export type QuestionCategory = QuestionCategoryId;
 export type QuestionIntensity = "Light" | "Meaningful" | "Deep";

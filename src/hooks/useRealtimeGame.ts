@@ -10,6 +10,7 @@ import type {
   QuestionCategory,
   RevealResult,
   RoundSubmission,
+  PlayerRoundStatus,
 } from "../types/game";
 
 interface SyncedRoom {
@@ -33,6 +34,7 @@ interface SyncedPlayer {
   connected: boolean;
   avatar_type: string;
   avatar_path: string;
+  round_status: PlayerRoundStatus;
 }
 
 interface RoomState {
@@ -61,6 +63,7 @@ export function useRealtimeGame() {
     useState<ConnectionStatus>("Connecting");
   const [error, setError] = useState("");
   const [userId, setUserId] = useState("");
+  const [submissionRetrying, setSubmissionRetrying] = useState(false);
   const roomIdRef = useRef<string | null>(null);
 
   const refresh = useCallback(async (roomId?: string) => {
@@ -130,9 +133,7 @@ export function useRealtimeGame() {
         else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT")
           setConnection("Reconnecting");
       });
-    const poll = window.setInterval(reload, 2500);
     return () => {
-      window.clearInterval(poll);
       void client.removeChannel(channel);
     };
   }, [refresh, state?.room.id]);
@@ -249,13 +250,18 @@ export function useRealtimeGame() {
     (round: number, personal: Choice, prediction: Choice) =>
       run(async () => {
         if (!supabase || !roomIdRef.current) throw new Error("room_not_found");
-        const { error: rpcError } = await supabase.rpc("submit_round_answer", {
-          p_room: roomIdRef.current,
-          p_round: round,
-          p_personal: personal,
-          p_prediction: prediction,
+        const client = supabase;
+        const submit = () => client.rpc("submit_round_answer", {
+          p_room: roomIdRef.current!, p_round: round, p_personal: personal, p_prediction: prediction,
         });
-        if (rpcError) throw rpcError;
+        let result = await submit();
+        if (result.error) {
+          setSubmissionRetrying(true);
+          await new Promise((resolve) => window.setTimeout(resolve, 500));
+          result = await submit();
+        }
+        setSubmissionRetrying(false);
+        if (result.error && !result.error.message.includes("already_locked")) throw result.error;
         return refresh();
       }),
     [refresh, run],
@@ -318,6 +324,7 @@ export function useRealtimeGame() {
     userId,
     connection,
     error,
+    submissionRetrying,
     clearError: () => setError(""),
     createRoom,
     joinRoom,

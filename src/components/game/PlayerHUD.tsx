@@ -1,6 +1,8 @@
 import { motion } from "framer-motion";
 import { getAvatar } from "../../constants/avatars";
 import { PixelAvatar } from "../common/PixelAvatar";
+import { PlayerStatusIndicator } from "./PlayerStatusIndicator";
+import type { PlayerRoundStatus } from "../../types/game";
 
 export interface HUDPlayer {
   display_name: string;
@@ -8,6 +10,7 @@ export interface HUDPlayer {
   avatar_path: string;
   score: number;
   connected: boolean;
+  round_status: PlayerRoundStatus;
 }
 
 export function PlayerHUD({
@@ -25,6 +28,7 @@ export function PlayerHUD({
   const reverse = side === "right";
   return (
     <section className={`player-hud player-hud-${side}`} aria-label={`${player.display_name}, score ${meter} out of 10`}>
+      <PlayerStatusIndicator status={player.round_status ?? "thinking"} />
       <PixelAvatar avatarId={avatar.id} alt="" size="small" priority className="hud-avatar" />
       <div className={`hud-copy ${reverse ? "text-right" : "text-left"}`}>
         <div className={`flex items-center gap-2 ${reverse ? "justify-end" : ""}`}>

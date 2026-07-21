@@ -156,10 +156,13 @@ export default function App() {
         </header>
         <main className="flex-1 flex flex-col justify-center px-4 md:px-8 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2 md:pb-10">
           {showHUD && (
-            <div className="hud-stage">
-              <PlayerHUD player={players[0]} side="left" completedRounds={activeRound + (room?.status === "reveal" || room?.status === "finished" ? 1 : 0)} />
-              <PlayerHUD player={players[1]} side="right" completedRounds={activeRound + (room?.status === "reveal" || room?.status === "finished" ? 1 : 0)} />
-            </div>
+            <>
+              <div className="hud-stage">
+                <PlayerHUD player={players[0]} side="left" completedRounds={activeRound + (room?.status === "reveal" || room?.status === "finished" ? 1 : 0)} />
+                <PlayerHUD player={players[1]} side="right" completedRounds={activeRound + (room?.status === "reveal" || room?.status === "finished" ? 1 : 0)} />
+              </div>
+              {realtime.submissionRetrying && <p className="hud-retrying" role="status">Retrying...</p>}
+            </>
           )}
           <section className="glass rounded-[28px] md:rounded-[36px] w-full max-w-5xl mx-auto px-5 py-7 md:px-10 md:py-10 lg:px-12 lg:py-11">
             <GameErrorBoundary

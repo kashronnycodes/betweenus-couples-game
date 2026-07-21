@@ -55,7 +55,22 @@ for (const category of categories) {
     throw new Error(`Invalid synchronized state for ${category}`);
   }
   if (category === "deep") {
-    for (const [client, personal, prediction] of [[host, "A", "B"], [guest, "B", "A"]]) {
+    const initialPlayers = state.players.map((player) => player.round_status);
+    if (initialPlayers.some((status) => status !== "thinking")) throw new Error("Round did not begin in thinking state");
+    const realtimeStatuses = [];
+    const statusChannel = guest
+      .channel(`verify-status-${created.room.id}`)
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "players", filter: `room_id=eq.${created.room.id}`,
+      }, (payload) => realtimeStatuses.push(payload.new.round_status));
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Realtime subscription timed out")), 5000);
+      statusChannel.subscribe((status) => {
+        if (status === "SUBSCRIBED") { clearTimeout(timeout); resolve(); }
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") { clearTimeout(timeout); reject(new Error(status)); }
+      });
+    });
+    for (const [index, [client, personal, prediction]] of [[host, "A", "B"], [guest, "B", "A"]].entries()) {
       const { error } = await client.rpc("submit_round_answer", {
         p_room: created.room.id,
         p_round: state.room.current_round,
@@ -63,6 +78,12 @@ for (const category of categories) {
         p_prediction: prediction,
       });
       if (error) throw error;
+      const observer = index === 0 ? guest : host;
+      const progress = await observer.rpc("get_room_state", { p_room: created.room.id });
+      if (progress.error) throw progress.error;
+      const statuses = progress.data.players.map((player) => player.round_status);
+      const expected = index === 0 ? ["submitted", "thinking"] : ["submitted", "submitted"];
+      if (statuses.join() !== expected.join()) throw new Error(`Unexpected realtime progress: ${statuses.join()}`);
     }
     const firstRecord = await host.rpc("record_completed_question", {
       p_room: created.room.id, p_round: state.room.current_round,
@@ -83,8 +104,21 @@ for (const category of categories) {
     if (history.error) throw history.error;
     const completed = history.data.find((item) => item.question_id === ids[0]);
     if (completed?.seen_by_players !== 2) throw new Error("Partner history was not combined");
+    const advanced = await host.rpc("advance_game_round", { p_room: created.room.id });
+    if (advanced.error) throw advanced.error;
+    const nextRound = await guest.rpc("get_room_state", { p_room: created.room.id });
+    if (nextRound.error) throw nextRound.error;
+    if (nextRound.data.players.some((player) => player.round_status !== "thinking")) {
+      throw new Error("Player progress did not reset for the next round");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    if (realtimeStatuses.filter((status) => status === "submitted").length < 2 || !realtimeStatuses.includes("thinking")) {
+      throw new Error(`Missing realtime status events: ${realtimeStatuses.join()}`);
+    }
+    await guest.removeChannel(statusChannel);
   }
   console.log(`verified ${category}: ${count} synchronized questions`);
 }
 
+await Promise.all([host.removeAllChannels(), guest.removeAllChannels()]);
 console.log("two-player verification passed");
