@@ -12,6 +12,7 @@ import { AVATARS, type AvatarId } from "./constants/avatars";
 import { QUESTION_CATEGORIES, getQuestionCategoryLabel } from "./constants/questionCategories";
 import { questions } from "./data/questions";
 import { normalizeRoomCode, resolveQuestionIds, QuestionResolutionError } from "./lib/gameLogic";
+import { preloadAvatar, preloadAvatarsWithTimeout } from "./lib/preloadAvatar";
 import { useRealtimeGame } from "./hooks/useRealtimeGame";
 import type {
   Choice,
@@ -90,6 +91,9 @@ export default function App() {
     }
     if (room.status === "finished") go("results");
   }, [room?.id, room?.status, room?.current_round]);
+  useEffect(() => {
+    for (const player of players) void preloadAvatar(AVATARS.find((item) => item.id === player.avatar_type)?.id ?? "male").catch(() => undefined);
+  }, [players]);
 
   async function perform(action: () => Promise<unknown>) {
     setBusy(true);
@@ -211,7 +215,10 @@ export default function App() {
                 {screen.kind === "avatar" && (
                   <CharacterSelectionScreen
                     selected={avatar}
-                    onSelect={setAvatar}
+                    onSelect={(selected) => {
+                      setAvatar(selected);
+                      void preloadAvatar(selected).catch(() => undefined);
+                    }}
                     onBack={() => go(pendingRoomAction === "join" ? "join" : "create")}
                     busy={busy}
                     error={realtime.error}
@@ -238,7 +245,11 @@ export default function App() {
                     isHost={isHost}
                     busy={busy}
                     error={realtime.error}
-                    start={() => perform(realtime.startGame)}
+                    start={() => perform(async () => {
+                      const avatarIds = players.map((player) => AVATARS.find((item) => item.id === player.avatar_type)?.id ?? "male");
+                      await preloadAvatarsWithTimeout(avatarIds);
+                      await realtime.startGame();
+                    })}
                   />
                 )}{" "}
                 {(screen.kind === "personal" ||

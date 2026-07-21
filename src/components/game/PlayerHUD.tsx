@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { getAvatar } from "../../constants/avatars";
+import { PixelAvatar } from "../common/PixelAvatar";
 
 export interface HUDPlayer {
   display_name: string;
@@ -24,12 +25,7 @@ export function PlayerHUD({
   const reverse = side === "right";
   return (
     <section className={`player-hud player-hud-${side}`} aria-label={`${player.display_name}, score ${meter} out of 10`}>
-      <img
-        src={player.avatar_path || avatar.path}
-        alt=""
-        className="hud-avatar"
-        draggable={false}
-      />
+      <PixelAvatar avatarId={avatar.id} alt="" size="small" priority className="hud-avatar" />
       <div className={`hud-copy ${reverse ? "text-right" : "text-left"}`}>
         <div className={`flex items-center gap-2 ${reverse ? "justify-end" : ""}`}>
           <span className={`status-pin ${player.connected ? "connected" : ""}`} />

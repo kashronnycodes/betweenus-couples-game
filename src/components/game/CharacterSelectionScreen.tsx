@@ -1,6 +1,7 @@
 import { Check } from "lucide-react";
 import { AVATARS, type AvatarId } from "../../constants/avatars";
 import { Button } from "../common/Button";
+import { PixelAvatar } from "../common/PixelAvatar";
 
 export function CharacterSelectionScreen({
   selected,
@@ -40,7 +41,7 @@ export function CharacterSelectionScreen({
             >
               {active && <span className="character-check"><Check size={16} /></span>}
               <div className="character-image-frame">
-                <img src={avatar.path} alt="" className="character-image" draggable={false} />
+                <PixelAvatar avatarId={avatar.id} alt={avatar.name} size="large" priority className="character-image" />
               </div>
               <span className="font-serif text-xl md:text-2xl mt-3">{avatar.name}</span>
               <span className="eyebrow mt-1">{avatar.label}</span>
