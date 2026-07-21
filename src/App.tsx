@@ -6,10 +6,12 @@ import { Button } from "./components/common/Button";
 import { OptionCard } from "./components/game/OptionCard";
 import { CharacterSelectionScreen } from "./components/game/CharacterSelectionScreen";
 import { PlayerHUD } from "./components/game/PlayerHUD";
+import { GameErrorBoundary } from "./components/game/GameErrorBoundary";
 import { APP_CAPTION, APP_NAME } from "./constants/app";
 import { AVATARS, type AvatarId } from "./constants/avatars";
+import { QUESTION_CATEGORIES, getQuestionCategoryLabel } from "./constants/questionCategories";
 import { questions } from "./data/questions";
-import { normalizeRoomCode, selectQuestions } from "./lib/gameLogic";
+import { normalizeRoomCode, resolveQuestionIds, QuestionResolutionError } from "./lib/gameLogic";
 import { useRealtimeGame } from "./hooks/useRealtimeGame";
 import type {
   Choice,
@@ -17,16 +19,7 @@ import type {
   QuestionCategory,
   RevealResult,
 } from "./types/game";
-const cats: QuestionCategory[] = [
-  "Mixed",
-  "Cute and Romantic",
-  "Funny and Random",
-  "Dates and Activities",
-  "Food",
-  "Future Together",
-  "Relationship Preferences",
-  "Deep Questions",
-];
+const questionMap = new Map(questions.map((question) => [question.id, question]));
 const motionProps = {
   initial: { opacity: 0, y: 14, scale: 0.99 },
   animate: { opacity: 1, y: 0, scale: 1 },
@@ -38,7 +31,7 @@ export default function App() {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [count, setCount] = useState(10);
-  const [category, setCategory] = useState<QuestionCategory>("Mixed");
+  const [category, setCategory] = useState<QuestionCategory>("mixed");
   const [round, setRound] = useState(0);
   const [choice, setChoice] = useState<Choice>();
   const [guess, setGuess] = useState<Choice>();
@@ -54,13 +47,14 @@ export default function App() {
   const partner = players.find((player) => player.user_id !== realtime.userId)?.display_name ?? "";
   const score = players.map((player) => player.score);
   const game = useMemo(() => {
-    if (room?.question_ids.length) {
-      return room.question_ids
-        .map((id) => questions.find((question) => question.id === id))
-        .filter((question): question is (typeof questions)[number] => Boolean(question));
+    if (!room?.question_ids.length) return [];
+    try {
+      return resolveQuestionIds(room.question_ids, questionMap);
+    } catch (error) {
+      if (import.meta.env.DEV && error instanceof QuestionResolutionError) console.error(error.message);
+      return [];
     }
-    return selectQuestions(questions, category, count);
-  }, [category, count, room?.question_ids]);
+  }, [room?.question_ids]);
   const activeRound = room?.current_round ?? round;
   const q = game[activeRound];
   const connected = realtime.connection === "Connected";
@@ -164,6 +158,11 @@ export default function App() {
             </div>
           )}
           <section className="glass rounded-[28px] md:rounded-[36px] w-full max-w-5xl mx-auto px-5 py-7 md:px-10 md:py-10 lg:px-12 lg:py-11">
+            <GameErrorBoundary
+              onRetry={() => void realtime.refresh()}
+              onUseMixed={() => { setCategory("mixed"); go(room ? "lobby" : "create"); }}
+              onReturn={() => go(room ? "lobby" : "landing")}
+            >
             <AnimatePresence mode="wait">
               <motion.div key={screen.kind} {...motionProps}>
                 {screen.kind === "landing" && (
@@ -221,8 +220,7 @@ export default function App() {
                       const selectedAvatar = AVATARS.find((item) => item.id === avatar)!;
                       void perform(async () => {
                         if (pendingRoomAction === "create") {
-                          const selected = selectQuestions(questions, category, count);
-                          await realtime.createRoom(name, category, count, selected.map((question) => question.id), selectedAvatar.id, selectedAvatar.path);
+                          await realtime.createRoom(name, category, count, selectedAvatar.id, selectedAvatar.path);
                         } else {
                           await realtime.joinRoom(name, code, selectedAvatar.id, selectedAvatar.path);
                         }
@@ -318,6 +316,7 @@ export default function App() {
                 )}
               </motion.div>
             </AnimatePresence>
+            </GameErrorBoundary>
           </section>
         </main>
       </div>
@@ -412,8 +411,8 @@ function Setup(p: {
           value={p.category}
           onChange={(e) => p.setCategory(e.target.value as QuestionCategory)}
         >
-          {cats.map((c) => (
-            <option key={c}>{c}</option>
+          {QUESTION_CATEGORIES.map((c) => (
+            <option key={c.id} value={c.id}>{c.label}</option>
           ))}
         </select>
       </label>
@@ -496,7 +495,7 @@ function Lobby({
   partner: string;
   code: string;
   count: number;
-  category: string;
+  category: QuestionCategory;
   start: () => void;
   isHost: boolean;
   busy: boolean;
@@ -554,7 +553,7 @@ function Lobby({
         </p>
       </div>
       <div className="flex justify-center gap-6 text-xs text-[var(--foreground-soft)] mt-5">
-        <span>{category}</span>
+        <span>{getQuestionCategoryLabel(category)}</span>
         <span>{count} rounds</span>
         <span>Connected</span>
       </div>
@@ -579,7 +578,7 @@ function Question({
   submit,
   busy,
 }: {
-  q: (typeof questions)[number];
+  q?: (typeof questions)[number];
   round: number;
   count: number;
   mode: "personal" | "prediction";
@@ -588,13 +587,22 @@ function Question({
   submit: () => void;
   busy: boolean;
 }) {
+  if (!q) {
+    return (
+      <div className="text-center py-10" role="status">
+        <p className="eyebrow">Preparing your game</p>
+        <h1 className="question mt-4">Preparing questions for both of you…</h1>
+        <p className="text-[var(--foreground-soft)] mt-4">Your questions will appear as soon as the room is ready.</p>
+      </div>
+    );
+  }
   return (
     <div>
       <div className="flex justify-between eyebrow">
         <span>
           Question {String(round + 1).padStart(2, "0")} / {count}
         </span>
-        <span>{q.category}</span>
+        <span>{getQuestionCategoryLabel(q.category)}</span>
       </div>
       <div className="progress mt-4">
         <i style={{ width: `${((round + 1) / count) * 100}%` }} />

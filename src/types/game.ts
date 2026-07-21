@@ -1,20 +1,13 @@
 export type Choice = "A" | "B";
-export type QuestionCategory =
-  | "Mixed"
-  | "Cute and Romantic"
-  | "Funny and Random"
-  | "Dates and Activities"
-  | "Food"
-  | "Future Together"
-  | "Relationship Preferences"
-  | "Deep Questions";
+import type { QuestionCategoryId } from "../constants/questionCategories";
+export type QuestionCategory = QuestionCategoryId;
 export type QuestionIntensity = "Light" | "Meaningful" | "Deep";
 export interface WouldYouRatherQuestion {
   id: string;
   question: string;
   optionA: string;
   optionB: string;
-  category: Exclude<QuestionCategory, "Mixed">;
+  category: Exclude<QuestionCategory, "mixed">;
   intensity: QuestionIntensity;
 }
 export interface Player {
